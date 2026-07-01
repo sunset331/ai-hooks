@@ -1,113 +1,118 @@
 # ai-hooks — Persistent Project Memory for AI Coding
 
-> Keep your AI's memory in the project, not in the chat window.
->
-> `ai-hooks` is a lightweight runtime that persists AI coding session context across commits, branches, tools, and shutdowns — using git hooks, SQLite events, and Claude Code integration.
+```text
+AI loses memory between sessions.
+This project fixes that.
+```
+
+Close Claude Code. All context gone. Switch projects. Re-read everything. Pick up a repo after a week. Start from zero.
+
+**ai-hooks gives Claude Code persistent project memory.** It records every commit, checkout, and AI action as events in SQLite, auto-injects them when you start a session, and keeps STATUS.md always current.
+
+No cloud. No API. No vendor lock-in. Just a Bash script, a Python SQLite wrapper, and git hooks.
 
 ```text
-         git commit
-              │
-              ▼
-       SQLite Events
-              │
-              ▼
-       Project State
-              │
-     ┌────────┴────────┐
-     ▼                 ▼
-Claude Session    STATUS.md (auto-rendered)
-(startup inject)   (always current)
+git commit
+    │
+    ▼
+SQLite Events ──→ Project State ──→ Claude Session (auto-injected on start)
+                                      → STATUS.md (auto-rendered)
 ```
 
 ## Quick Start
 
 ```bash
-# 1. Clone anywhere
+# 1. One command to install
 git clone https://github.com/sunset331/ai-hooks.git
-cd ai-hooks
+cd ai-hooks && bash install.sh
 
-# 2. Install global commands
-bash install.sh
-
-# 3. Add to your project
+# 2. One command to add to any project
 ai-init ~/my-project
 
-# 4. Done. Every git commit now automatically:
-#    - Records commit/checkout events to SQLite
-#    - Updates project state
-#    - Renders STATUS.md
+# 3. Work normally. That's it.
+git commit -m "fix: login bug"      # → event + state auto-recorded
+git checkout feature-branch         # → state summary printed
+# next Claude Code session → context auto-injected
 ```
-
-## What It Does
 
 | Situation | Without ai-hooks | With ai-hooks |
 |-----------|-----------------|---------------|
-| Close Claude Code | All context lost | Auto-injected on next start |
-| Switch projects | Re-read everything | Branch state auto-restored |
-| Forgot to update STATUS.md | Drift, stale info | Auto-rendered on every commit |
-| New AI tool joins | Starts from zero | Reads the same `.ai/` files |
-| `__pycache__` in commit | Caught at review | Warning at commit time |
+| Close Claude Code | Lose all context | Auto-injected next session |
+| Switch projects | Re-read everything | Branch state restored |
+| STATUS.md outdated | Drift, stale | Auto-rendered every commit |
+| `__pycache__` in commit | Caught at PR review | Warning at commit time |
+| New AI tool joins | Starts from zero | Reads same `.ai/` files |
 
 ## Architecture
 
 ```
 .ai/                           # Per-project (created by ai-init)
-├── project.db                 # SQLite — events (append-only) + state (KV)
-├── STATUS.md                  # Auto-rendered from state (do not edit)
-├── MEMORY.md                  # Bugs, fixes, milestones (you write)
-├── DECISIONS.md               # Architecture decisions (you write)
-├── CHECKLIST.md               # Review checklist (template)
-└── WORKFLOW.md                # Workflow (template)
+├── project.db                 # SQLite — events + state
+├── STATUS.md                  # Auto-rendered (read-only)
+├── MEMORY.md                  # You write: bugs, fixes, milestones
+├── DECISIONS.md               # You write: architecture rationale
+├── CHECKLIST.md               # Review checklist
+└── WORKFLOW.md                # Project workflow
 
 .claude/
-├── settings.json              # SessionStart hook (injects context)
-└── skills/ai-review/SKILL.md  # /ai-review skill
+├── settings.json              # SessionStart hook for context injection
+└── skills/ai-review/SKILL.md  # /ai-review command
 
-.gitignore                     # .ai/project.db added automatically
+Data flow:
+    git commit → post-commit hook
+        → record_event.py → SQLite events (append-only)
+        → update_state.py → SQLite state (KV, upsert)
+        → render_state.py → STATUS.md (overwrite)
+    next Claude start → SessionStart hook → db.py summary → context
+    daily → Task Scheduler → scheduler-check.ps1 → health check (read-only)
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `ai-init <dir>` | Setup `.ai/` system for a project (idempotent) |
+| `ai-init <dir>` | Initialize `.ai/` system in a project (idempotent) |
 | `ai-doctor <dir>` | Diagnose `.ai/` health |
 | `ai-update <dir>` | Upgrade hooks path + DB schema |
-| `ai-uninstall <dir>` | Remove hook config, keep `.ai/` data |
+| `ai-uninstall <dir>` | Remove hook config (keeps `.ai/` data) |
 
 ## Events
 
-All state changes are recorded as events in SQLite. Events are append-only and versioned.
+Every state change is an append-only event. No data loss, full audit trail.
 
-| Type | Source | Payload |
-|------|--------|---------|
+| Type | Trigger | Payload |
+|------|---------|---------|
 | `commit` | post-commit hook | `{sha, message, date, author}` |
 | `checkout` | post-checkout hook | `{branch, from}` |
 | `ai_session` | Claude Code | `{action, model, summary}` |
 | `scheduler_check` | Task Scheduler | `{status, dirty_count, warnings}` |
 
 ```bash
-# Query events directly
-sqlite3 .ai/project.db "SELECT id, type, substr(payload,1,60) FROM events"
+sqlite3 .ai/project.db "SELECT id, type, payload FROM events"
 ```
 
-## Supported AI Tools
+## Who Is This For
 
-- **Claude Code** — Full support (hooks, sessions, skill)
-- **ChatGPT / Cursor / Codex** — Can read `.ai/` Markdown files manually
-- **Any future AI** — `.ai/` is plain Markdown + SQLite, zero vendor lock-in
+- **You use Claude Code daily** and hate losing context between sessions
+- **You juggle multiple projects** and need instant state recovery
+- **You want your AI memory to outlive any specific tool**
+- **You care about engineering fundamentals** — events, state, SQLite — not prompt hacks
 
 ## Requirements
 
 - Bash 4+
 - Python 3.8+ (with sqlite3)
-- Git (optional: without git, hooks won't fire, but `.ai/` still works)
+- Git (optional: hooks need it, `.ai/` files work without)
 
-## Related
+## Supported AI Tools
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — Full architecture and data flow
-- [設計笔记](../F:/Desktop/笔记/.ai-hooks使用手册.md) — 中文使用手册 (Obsidian)
+- **Claude Code** — Full support (hooks, sessions, skill)
+- **Any AI** — `.ai/` is plain Markdown + SQLite, zero dependency on any provider
 
 ## License
 
 MIT
+
+---
+
+*[中文使用手册](https://github.com/sunset331/ai-hooks/blob/master/docs/usage-zh.md)* — 完整的中文文档

@@ -179,10 +179,10 @@ bash F:/projects/.ai-hooks/doctor.sh /path/to/project
 
 ```bash
 # 核心功能测试 (8 项, 临时 git repo, 不污染现有项目)
-AI_HOOKS_PYTHON="F:/miniconda3/python.exe" bash tests/test_core.sh
+AI_HOOKS_PYTHON=python3 bash tests/test_core.sh
 
 # 并发测试 (10 线程)
-AI_HOOKS_PYTHON="F:/miniconda3/python.exe" python tests/test_concurrency.py
+AI_HOOKS_PYTHON=python3 python tests/test_concurrency.py
 ```
 
 ## 环境变量
