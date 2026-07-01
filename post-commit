@@ -1,0 +1,32 @@
+#!/bin/bash
+# post-commit hook — 记录 commit 事件 + 刷新 state + 更新 STATUS.md
+
+. "$(dirname "$0")/hooks.conf"
+
+PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+DB="$PROJECT_DIR/.ai/project.db"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+
+[ ! -f "$DB" ] && exit 0
+
+SHA=$(git log -1 --format="%H" 2>/dev/null || echo "unknown")
+MSG=$(git log -1 --format="%s" 2>/dev/null || echo "unknown")
+DATE=$(git log -1 --format="%ai" 2>/dev/null || echo "unknown")
+AUTHOR=$(git log -1 --format="%an" 2>/dev/null || echo "unknown")
+
+# 安全构建 JSON — 用 Python 避免 shell 拼 JSON 导致引号问题
+PAYLOAD=$("$AI_HOOKS_PYTHON" -c "
+import json, sys
+print(json.dumps({
+    'sha': sys.argv[1],
+    'message': sys.argv[2],
+    'date': sys.argv[3],
+    'author': sys.argv[4],
+}))
+" "$SHA" "$MSG" "$DATE" "$AUTHOR")
+
+"$AI_HOOKS_PYTHON" "$(dirname "$0")/record_event.py" "$DB" commit "$PAYLOAD" "$PROJECT_NAME"
+"$AI_HOOKS_PYTHON" "$(dirname "$0")/update_state.py" "$DB" commit
+"$AI_HOOKS_PYTHON" "$(dirname "$0")/render_state.py" "$DB" --file 2>/dev/null || true
+
+echo "OK .ai: commit event recorded, STATUS.md updated"

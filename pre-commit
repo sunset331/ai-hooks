@@ -1,0 +1,51 @@
+#!/bin/bash
+# pre-commit hook — 只打 warning，不阻止提交
+# 记录 pre_commit_scan 事件到 project.db
+
+# shellcheck source=../hooks.conf
+. "$(dirname "$0")/hooks.conf"
+
+PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+DB="$PROJECT_DIR/.ai/project.db"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+
+[ ! -f "$DB" ] && exit 0
+
+WARNINGS=0
+SCAN_RESULT=""
+
+# Check 1: __pycache__ in staging
+STAGED_PYCACHE=$(git diff --cached --name-only | grep "__pycache__" || true)
+if [ -n "$STAGED_PYCACHE" ]; then
+  echo "WARNING: __pycache__ files staged for commit"
+  echo "   Add to .gitignore or unstage:"
+  echo "$STAGED_PYCACHE" | head -5 | sed 's/^/   /'
+  WARNINGS=$((WARNINGS + 1))
+  SCAN_RESULT="${SCAN_RESULT}pycache,"
+fi
+
+# Check 2: .pyc in staging
+STAGED_PYC=$(git diff --cached --name-only | grep "\.pyc$" || true)
+if [ -n "$STAGED_PYC" ]; then
+  echo "WARNING: .pyc files staged for commit"
+  WARNINGS=$((WARNINGS + 1))
+  SCAN_RESULT="${SCAN_RESULT}pyc,"
+fi
+
+# Check 3: desktop/src/ changed but dist/ not staged
+STAGED_DESKTOP=$(git diff --cached --name-only | grep "^desktop/src/" || true)
+STAGED_DIST=$(git diff --cached --name-only | grep "^desktop/dist/" || true)
+if [ -n "$STAGED_DESKTOP" ] && [ -z "$STAGED_DIST" ]; then
+  echo "WARNING: desktop/src/ changed but dist/ not staged"
+  echo "   Run: cd desktop && npx tsc -b && npx vite build"
+  WARNINGS=$((WARNINGS + 1))
+fi
+
+# Record scan event
+if [ "$WARNINGS" -gt 0 ]; then
+  PAYLOAD=$("$AI_HOOKS_PYTHON" -c "import json; print(json.dumps({'warnings_count':$WARNINGS,'items':'$SCAN_RESULT'}))")
+  "$AI_HOOKS_PYTHON" "$(dirname "$0")/record_event.py" "$DB" pre_commit_scan "$PAYLOAD" "$PROJECT_NAME" 2>/dev/null || true
+  echo ""
+fi
+
+exit 0

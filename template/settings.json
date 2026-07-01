@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"{{AI_HOOKS_DIR}}/session-start.sh\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
