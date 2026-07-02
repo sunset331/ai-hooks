@@ -16,7 +16,9 @@ if [ ! -f "$DB" ]; then
 fi
 
 echo "=== 项目状态 ==="
-"$AI_HOOKS_PYTHON" "$AI_HOOKS_DIR/db.py" summary "$DB" 2>/dev/null || echo "(读取失败)"
+"$AI_HOOKS_PYTHON" "$AI_HOOKS_DIR/db.py" resume "$DB" 2>/dev/null || \
+"$AI_HOOKS_PYTHON" "$AI_HOOKS_DIR/db.py" summary "$DB" 2>/dev/null || \
+echo "(读取失败)"
 
 echo ""
 echo "=== 工作流提示 ==="

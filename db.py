@@ -9,6 +9,7 @@
     python db.py query <db_path> <sql>       # 执行查询
 """
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -254,6 +255,87 @@ def get_all_state(db_path: str) -> dict:
     return {r["key"]: json.loads(r["value"]) for r in rows}
 
 
+def _relative_time(iso_str: str) -> str:
+    """把 ISO 时间转成"3 小时前"格式"""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        now = datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = now - dt
+        seconds = int(delta.total_seconds())
+        if seconds < 60:
+            return "刚刚"
+        if seconds < 3600:
+            return f"{seconds // 60} 分钟前"
+        if seconds < 86400:
+            return f"{seconds // 3600} 小时前"
+        if seconds < 604800:
+            return f"{seconds // 86400} 天前"
+        return f"{seconds // 604800} 周前"
+    except Exception:
+        return iso_str[:19]
+
+
+def generate_resume(db_path: str) -> str:
+    """生成 Smart Resume — Claude 能直接用的 "你上次做到哪了"
+
+    UX 约束:
+        - "上次会话" 只取 1~3 条关键事件 (commit > checkout > ai_session)
+        - "建议下一步" 最多 2 条
+    """
+    state = get_all_state(db_path)
+    all_events = get_recent_events(db_path, limit=20)
+
+    lines = []
+    lines.append("== 项目摘要 ==")
+
+    project = os.path.basename(os.path.dirname(os.path.dirname(db_path)))
+    branch = state.get("current_branch", "?")
+    lines.append(f"项目: {project} ({branch} 分支)")
+
+    lc = state.get("last_commit", {})
+    if lc:
+        when = _relative_time(lc.get("date", ""))
+        lines.append(f"最后提交: {lc.get('message', '?')} ({lc.get('sha', '?')[:7]}) — {when}")
+
+    dirty = state.get("dirty_files", 0)
+    lines.append(f"工作区: {'干净' if not dirty else f'{dirty} 个文件未提交'}")
+
+    lines.append("")
+    lines.append("== 上次会话 ==")
+
+    # 只取关键事件：优先 commit，最多 3 条
+    priority_events = [e for e in all_events if e["type"] in ("commit", "checkout", "ai_session")]
+    key_events = sorted(priority_events, key=lambda e: e["id"], reverse=True)[:3]
+
+    for e in key_events:
+        when = _relative_time(e["created_at"])
+        p = e["payload"]
+        if e["type"] == "commit":
+            lines.append(f"- 提交: {p.get('message', '?')} ({when})")
+        elif e["type"] == "checkout":
+            lines.append(f"- 切到分支: {p.get('branch', '?')} ({when})")
+        elif e["type"] == "ai_session":
+            lines.append(f"- AI操作: {p.get('summary', '?')} ({when})")
+
+    # 来自 MEMORY.md 的遗留问题提示（如果有）
+    memory_path = os.path.join(os.path.dirname(db_path), "MEMORY.md")
+    if os.path.isfile(memory_path):
+        lines.append(f"\n踩坑记录: MEMORY.md ({os.path.getsize(memory_path)} bytes)")
+
+    lines.append("")
+    lines.append("== 建议下一步 ==")
+    ai_action = state.get("last_ai_action")
+    if ai_action:
+        lines.append(f"1. 继续上次工作: {ai_action}")
+    else:
+        lines.append("1. 查看 STATUS.md + MEMORY.md 同步上下文")
+    lines.append("2. 完成后更新 MEMORY.md 记录新踩坑")
+
+    return "\n".join(lines)
+
+
 def summary(db_path: str) -> str:
     """生成人类可读的状态摘要"""
     state = get_all_state(db_path)
@@ -264,7 +346,8 @@ def summary(db_path: str) -> str:
         lines.append(f"分支: {state['current_branch']}")
     if "last_commit" in state:
         c = state["last_commit"]
-        lines.append(f"最后提交: {c.get('message', '?')} ({c.get('sha', '?')[:8]})")
+        when = _relative_time(c.get("date", ""))
+        lines.append(f"最后提交: {c.get('message', '?')} ({c.get('sha', '?')[:8]}) — {when}")
     if "dirty_files" in state:
         dirty = state["dirty_files"]
         if dirty:
@@ -277,18 +360,18 @@ def summary(db_path: str) -> str:
     lines.append("")
     lines.append("最近事件:")
     for e in events:
-        t = e["created_at"][:19]
+        when = _relative_time(e["created_at"])
         p = e["payload"]
         if e["type"] == "commit":
-            lines.append(f"  [{t}] commit: {p.get('message', '?')}")
+            lines.append(f"  [{when}] commit: {p.get('message', '?')}")
         elif e["type"] == "checkout":
-            lines.append(f"  [{t}] checkout → {p.get('branch', '?')}")
+            lines.append(f"  [{when}] checkout → {p.get('branch', '?')}")
         elif e["type"] == "ai_session":
-            lines.append(f"  [{t}] AI: {p.get('summary', '?')}")
+            lines.append(f"  [{when}] AI: {p.get('summary', '?')}")
         elif e["type"] == "scheduler_check":
-            lines.append(f"  [{t}] 检查: {p.get('status', '?')}")
+            lines.append(f"  [{when}] 检查: {p.get('status', '?')}")
         else:
-            lines.append(f"  [{t}] {e['type']}")
+            lines.append(f"  [{when}] {e['type']}")
 
     return "\n".join(lines)
 
@@ -318,6 +401,8 @@ if __name__ == "__main__":
         conn.close()
     elif cmd == "summary":
         print(summary(db_path))
+    elif cmd == "resume":
+        print(generate_resume(db_path))
     else:
         print(f"Unknown command: {cmd}")
         sys.exit(1)
