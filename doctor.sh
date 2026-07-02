@@ -4,6 +4,9 @@
 
 . "$(dirname "$0")/hooks.conf"
 
+REPAIR_MODE=false
+[ "${1:-}" = "--repair" ] && REPAIR_MODE=true && shift
+
 PROJECT_DIR="$(cd "$1" 2>/dev/null && pwd || { echo "目录不存在: $1"; exit 1; })"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 
@@ -93,7 +96,14 @@ fi
 echo ""
 if [ "$ISSUES" -gt 0 ]; then
   echo "发现 $ISSUES 个问题"
-  echo "建议: bash $AI_HOOKS_DIR/setup.sh $PROJECT_DIR"
+  if [ "$REPAIR_MODE" = true ]; then
+    echo ""
+    echo "=== 尝试自动修复 ==="
+    "$AI_HOOKS_PYTHON" "$AI_HOOKS_DIR/rebuild_state.py" "$DB" 2>/dev/null && echo "修复完成" || echo "修复失败"
+  else
+    echo "建议: bash $AI_HOOKS_DIR/setup.sh $PROJECT_DIR"
+    echo "或: bash $AI_HOOKS_DIR/doctor.sh --repair $PROJECT_DIR 自动修复"
+  fi
 else
   echo "健康"
 fi
