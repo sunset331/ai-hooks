@@ -18,8 +18,13 @@ import json, sys
 print(json.dumps({'branch': sys.argv[1], 'from': sys.argv[2]}))
 " "$BRANCH" "$FROM")
 
-"$AI_HOOKS_PYTHON" "$(dirname "$0")/record_event.py" "$DB" checkout "$PAYLOAD" "$PROJECT_NAME"
-"$AI_HOOKS_PYTHON" "$(dirname "$0")/update_state.py" "$DB" checkout
+RECORD_OUTPUT=$("$AI_HOOKS_PYTHON" "$(dirname "$0")/record_event.py" "$DB" checkout "$PAYLOAD" "$PROJECT_NAME" 2>/dev/null) || true
+EVENT_ID=$(echo "$RECORD_OUTPUT" | "$AI_HOOKS_PYTHON" -c "import sys; s=sys.stdin.read().strip(); print(s.split()[0].split('=')[1] if 'event_id=' in s else '')" 2>/dev/null) || true
+
+if [ -n "$EVENT_ID" ]; then
+    "$AI_HOOKS_PYTHON" "$(dirname "$0")/update_state.py" "$DB" checkout "$EVENT_ID" 2>/dev/null || true
+fi
+
 "$AI_HOOKS_PYTHON" "$(dirname "$0")/render_state.py" "$DB" --file 2>/dev/null || true
 
 # 输出摘要

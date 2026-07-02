@@ -25,8 +25,13 @@ print(json.dumps({
 }))
 " "$SHA" "$MSG" "$DATE" "$AUTHOR")
 
-"$AI_HOOKS_PYTHON" "$(dirname "$0")/record_event.py" "$DB" commit "$PAYLOAD" "$PROJECT_NAME"
-"$AI_HOOKS_PYTHON" "$(dirname "$0")/update_state.py" "$DB" commit
-"$AI_HOOKS_PYTHON" "$(dirname "$0")/render_state.py" "$DB" --file 2>/dev/null || true
+# record_event 先执行，输出包含 event_id
+RECORD_OUTPUT=$("$AI_HOOKS_PYTHON" "$(dirname "$0")/record_event.py" "$DB" commit "$PAYLOAD" "$PROJECT_NAME" 2>/dev/null) || true
+EVENT_ID=$(echo "$RECORD_OUTPUT" | "$AI_HOOKS_PYTHON" -c "import sys; s=sys.stdin.read().strip(); print(s.split()[0].split('=')[1] if 'event_id=' in s else '')" 2>/dev/null) || true
 
+if [ -n "$EVENT_ID" ]; then
+    "$AI_HOOKS_PYTHON" "$(dirname "$0")/update_state.py" "$DB" commit "$EVENT_ID" 2>/dev/null || true
+fi
+
+"$AI_HOOKS_PYTHON" "$(dirname "$0")/render_state.py" "$DB" --file 2>/dev/null || true
 echo "OK .ai: commit event recorded, STATUS.md updated"

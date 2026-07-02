@@ -11,6 +11,7 @@
 import json
 import sqlite3
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 SCHEMA_VERSION = 1
@@ -142,6 +143,39 @@ def set_state(db_path: str, key: str, value):
     )
     conn.commit()
     conn.close()
+
+
+def set_all_state(db_path: str, kv: dict[str, object], retries: int = 1):
+    """批量原子写 state。
+
+    在单连接 + 单事务内写入所有 KV 对。
+    使用较短 busy_timeout (1000ms) 避免阻塞 git hook 主流程。
+    SQLITE_BUSY 时自动重试 1 次。
+
+    Args:
+        db_path: SQLite 路径
+        kv: key-value 对
+        retries: 剩余重试次数
+    """
+    updated_at = datetime.now(timezone.utc).isoformat()
+    for attempt in range(retries + 1):
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("PRAGMA busy_timeout=1000")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            with conn:
+                for key, value in kv.items():
+                    conn.execute(
+                        "INSERT OR REPLACE INTO state (key, value, updated_at) VALUES (?, ?, ?)",
+                        (key, json.dumps(value, ensure_ascii=False), updated_at),
+                    )
+            conn.close()
+            return
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e) and attempt < retries:
+                time.sleep(0.05)
+                continue
+            raise
 
 
 def get_state(db_path: str, key: str):
