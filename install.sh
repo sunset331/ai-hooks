@@ -95,6 +95,7 @@ create_wrapper "ai-doctor"    "doctor.sh"
 create_wrapper "ai-update"    "update.sh"
 create_wrapper "ai-uninstall" "uninstall.sh"
 create_wrapper "ai-log"       "bin/ai-log"
+create_wrapper "ai-new"       "bin/ai-new"
 
 echo ""
 echo "=== 完成 ==="
@@ -112,10 +113,11 @@ if ! echo ":$PATH:" | grep -q ":$BIN_DIR:" 2>/dev/null; then
 fi
 
 echo "用法:"
-echo "  ai-init ~/my-new-project     — 新项目接入"
-echo "  ai-doctor ~/my-project       — 诊断"
-echo "  ai-update ~/my-project       — 升级"
-echo "  ai-uninstall ~/my-project    — 卸载"
+echo "  ai-new my-project             — 创建新项目（git + ai 一步到位）"
+echo "  ai-init ~/my-new-project      — 已有项目接入"
+echo "  ai-doctor ~/my-project        — 诊断"
+echo "  ai-update ~/my-project        — 升级"
+echo "  ai-uninstall ~/my-project     — 卸载"
 echo ""
 echo "环境变量:"
 echo "  AI_HOOKS_PYTHON=python3  ai-init ~/project   — 指定 Python"
