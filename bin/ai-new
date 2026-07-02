@@ -2,19 +2,32 @@
 # ai-new — 一条命令创建新项目 + git init + ai-init
 #
 # 用法:
-#   ai-new my-project                 # 在 F:/projects/ 下创建
+#   ai-new my-project                 # 在 $AI_NEW_DIR 下创建
 #   ai-new /path/to/my-project        # 在指定路径创建
 #
 # 等价于:
 #   mkdir project && git init && ai-init
 
-export AI_HOOKS_DIR="${AI_HOOKS_DIR:-F:/projects/.ai-hooks}"
+# 自我定位
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+if [ "$(basename "$SCRIPT_DIR")" = "bin" ]; then
+    HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+    HOOKS_DIR="${AI_HOOKS_DIR:-$SCRIPT_DIR}"
+fi
+export AI_HOOKS_DIR="$HOOKS_DIR"
 export AI_HOOKS_PYTHON="${AI_HOOKS_PYTHON:-python}"
+
+# 默认项目根目录（可覆盖）
+: "${AI_NEW_DIR:=$HOME/projects}"
 
 if [ $# -lt 1 ]; then
     echo "Usage: ai-new <project-name-or-path>"
-    echo "  ai-new my-project     → F:/projects/my-project/"
+    echo "  ai-new my-project     → \$AI_NEW_DIR/my-project/ ($AI_NEW_DIR)"
     echo "  ai-new ~/my-project   → ~/my-project/"
+    echo ""
+    echo "Environment:"
+    echo "  AI_NEW_DIR — default project root (current: $AI_NEW_DIR)"
     exit 1
 fi
 
@@ -22,7 +35,7 @@ fi
 INPUT="$1"
 case "$INPUT" in
     /*|~/*) PROJECT_DIR="$INPUT" ;;  # 绝对路径
-    *) PROJECT_DIR="F:/projects/$INPUT" ;;  # 相对路径 → F:/projects/
+    *) PROJECT_DIR="$AI_NEW_DIR/$INPUT" ;;  # 相对路径 → AI_NEW_DIR
 esac
 
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
