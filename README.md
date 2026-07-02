@@ -38,8 +38,9 @@ git checkout feature-branch         # → state summary printed
 | Situation | Without ai-hooks | With ai-hooks |
 |-----------|-----------------|---------------|
 | Close Claude Code | Lose all context | Auto-injected next session |
-| Switch projects | Re-read everything | Branch state restored |
+| Switch projects | Re-read everything | Smart Resume picks up where you left off |
 | STATUS.md outdated | Drift, stale | Auto-rendered every commit |
+| State corrupted | Manual recovery | `doctor --repair` auto-rebuilds from events |
 | `__pycache__` in commit | Caught at PR review | Warning at commit time |
 | New AI tool joins | Starts from zero | Reads same `.ai/` files |
 

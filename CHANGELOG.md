@@ -1,5 +1,20 @@
 # Changelog
 
+## v3.1.0 (2026-07-02)
+
+- [refactor] Extract pure `reduce(state, event) -> state` function — the single source of truth for state projection
+- [refactor] `update_state.py` now uses the shared reducer and accepts `event_id` param (no more `ORDER BY DESC LIMIT 1`)
+- [feat] `set_all_state()` for atomic batch state writes with `busy_timeout=1000` + auto-retry
+- [feat] `rebuild_state.py` — full event replay from SQLite: `--strict` debug mode, `--diff` dry-run
+- [feat] `doctor.sh --repair` — auto-rebuild state when consistency issues detected
+- [feat] Smart Resume (`generate_resume()`) — Claude sees "what you did last session" instead of raw key-value dump
+- [feat] SessionStart hook now outputs project summary + last session + suggested next steps
+- [fix] State consistency: `record_event` + `update_state` now passes `event_id` instead of racing on `LIMIT 1`
+- [fix] Git hook guards: `2>/dev/null || true` on all critical paths (no more false failure propagation)
+- [fix] `pre-commit` JSON built via `sys.argv` instead of shell interpolation (was vulnerable to special chars)
+- [fix] `summary()` uses relative timestamps ("3 小时前") instead of raw ISO
+- [test] 18 reducer unit tests + 9 rebuild/idempotent tests = 30 pytest + 22 shell tests, all passing
+
 ## v3.0.0 (2026-07-01)
 
 - Event-driven architecture with SQLite (events + state tables)
