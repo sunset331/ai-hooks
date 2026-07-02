@@ -16,6 +16,11 @@
 - 输入 `/ai-review` 触发 review skill
 - 参考 CHECKLIST.md
 
+## 事件记录
+- 完成重要任务后运行: `ai-log "做了什么，结果是什么"`
+- 这会写入 event 到 project.db，下次 session 自动恢复上下文
+- 无需手动记，完成后顺手敲一行即可
+
 ## 结束
 - 更新 MEMORY.md 记录踩坑/修复/经验
 - 必要时更新 DECISIONS.md

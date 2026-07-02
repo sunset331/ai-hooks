@@ -1,0 +1,59 @@
+#!/bin/bash
+# ai-hooks: ai-log — 快速记录一条 ai_session 事件
+#
+# 用法:
+#   ai-log "BPINNs DCU 验证完成, L2=2.9e-3"
+#   ai-log                                  # 自动 fallback: git diff --stat
+#   ai-log "action=验证 status=done result=L2=2.9e-3"   # key=value 结构化
+#
+# 自动从 pwd 向上找 .ai/project.db
+
+# 自我定位
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+# 如果在 bin/ 下，AI_HOOKS_DIR 是上一级
+if [ "$(basename "$SCRIPT_DIR")" = "bin" ]; then
+    export AI_HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+    export AI_HOOKS_DIR="${AI_HOOKS_DIR:-$SCRIPT_DIR}"
+fi
+export AI_HOOKS_PYTHON="${AI_HOOKS_PYTHON:-python}"
+
+# 向上找 .ai/project.db
+find_db() {
+    local dir="$PWD"
+    while [ "$dir" != "/" ]; do
+        if [ -f "$dir/.ai/project.db" ]; then
+            echo "$dir/.ai/project.db"
+            return 0
+        fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+DB=$(find_db) || { echo "No .ai/project.db found (not in an ai-hooks project)"; exit 1; }
+PROJECT_NAME="$(basename "$(dirname "$DB")")"
+
+# 构建 summary
+if [ $# -ge 1 ] && [ -n "$1" ]; then
+    SUMMARY="$1"
+else
+    # 无参 fallback: git diff --stat，过滤噪音文件
+    PROJECT_DIR="$(dirname "$(dirname "$DB")")"
+    DIFF=$(cd "$PROJECT_DIR" && git diff --stat 2>/dev/null || echo "")
+    if [ -z "$DIFF" ]; then
+        SUMMARY="check-in (no uncommitted changes)"
+    else
+        FILTERED=$("$AI_HOOKS_PYTHON" -c "
+import sys, re
+lines = sys.stdin.read().strip().split('\n')
+keep = [l for l in lines if re.search(r'\.(py|md)\b|train/', l)]
+print('\n'.join(keep) if keep else lines[-1] if lines else '')
+" 2>/dev/null <<< "$DIFF")
+        SUMMARY="UNLABELED: ${FILTERED:-$DIFF}"
+    fi
+fi
+
+PAYLOAD=$("$AI_HOOKS_PYTHON" -c "import json, sys; print(json.dumps({'summary': sys.argv[1]}))" "$SUMMARY")
+"$AI_HOOKS_PYTHON" "$AI_HOOKS_DIR/record_event.py" "$DB" ai_session "$PAYLOAD" "$PROJECT_NAME"
+echo "ai-log: event recorded"

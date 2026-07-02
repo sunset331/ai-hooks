@@ -94,6 +94,7 @@ create_wrapper "ai-init"      "setup.sh"
 create_wrapper "ai-doctor"    "doctor.sh"
 create_wrapper "ai-update"    "update.sh"
 create_wrapper "ai-uninstall" "uninstall.sh"
+create_wrapper "ai-log"       "bin/ai-log"
 
 echo ""
 echo "=== 完成 ==="
