@@ -376,12 +376,69 @@ def summary(db_path: str) -> str:
     return "\n".join(lines)
 
 
+def display_events(db_path: str, since: str = None) -> str:
+    """格式化显示事件时间线。
+
+    Args:
+        db_path: SQLite 路径
+        since: ISO 时间起点，如 "2026-07-02"。None=最近 20 条
+
+    用法:
+        python db.py events <db_path>              # 最近 20 条
+        python db.py events <db_path> --today       # 今天
+        python db.py events <db_path> --since 2026-07-01  # 指定日期起
+    """
+    events = get_recent_events(db_path, limit=999)
+    if since:
+        events = [e for e in events if e["created_at"] >= since]
+
+    if not events:
+        return "No events recorded"
+
+    lines = []
+    seen_today = []
+    prev_date = ""
+
+    for e in reversed(events):  # 正序（最早的在前）
+        date = e["created_at"][:10]
+        time = e["created_at"][11:16]
+        p = e["payload"]
+
+        if date != prev_date:
+            if lines:
+                lines.append("")
+            lines.append(f"── {date} ──")
+            prev_date = date
+
+        if e["type"] == "commit":
+            msg = p.get("message", "?")
+            tag = "backfilled" if p.get("backfilled") else ""
+            suffix = f" [{tag}]" if tag else ""
+            lines.append(f"  {time}  commit  {msg}{suffix}")
+        elif e["type"] == "checkout":
+            lines.append(f"  {time}  checkout → {p.get('branch', '?')}")
+        elif e["type"] == "ai_session":
+            summary = p.get("summary", "?")
+            tag = "backfilled" if p.get("backfilled") else ""
+            suffix = f" [{tag}]" if tag else ""
+            lines.append(f"  {time}  {summary}{suffix}")
+
+    total = len(events)
+    if total == 1:
+        lines.append(f"\n1 event")
+    else:
+        lines.append(f"\n{total} events")
+
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: python db.py init <db_path>")
         print("       python db.py migrate <db_path>")
         print("       python db.py query <db_path> <sql>")
         print("       python db.py summary <db_path>")
+        print("       python db.py events <db_path> [--today|--since DATE]")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -403,6 +460,14 @@ if __name__ == "__main__":
         print(summary(db_path))
     elif cmd == "resume":
         print(generate_resume(db_path))
+    elif cmd == "events":
+        since = None
+        if len(sys.argv) >= 4:
+            if sys.argv[3] == "--today":
+                since = datetime.now(timezone.utc).isoformat()[:10]
+            elif sys.argv[3] == "--since" and len(sys.argv) >= 5:
+                since = sys.argv[4]
+        print(display_events(db_path, since))
     else:
         print(f"Unknown command: {cmd}")
         sys.exit(1)
