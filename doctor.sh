@@ -25,7 +25,7 @@ fi
 
 # 2
 if [ -f "$DB" ]; then
-  if "$AI_HOOKS_PYTHON" -c "import sqlite3; sqlite3.connect('$DB').execute('SELECT 1')" 2>/dev/null; then
+  if "$AI_HOOKS_PYTHON" -c "import sqlite3, sys; sqlite3.connect(sys.argv[1]).execute('SELECT 1')" "$DB" 2>/dev/null; then
     echo "  [OK] project.db 可正常打开"
   else
     echo "  [FAIL] project.db 损坏"; ISSUES=$((ISSUES + 1))
@@ -81,8 +81,8 @@ fi
 if [ -f "$DB" ]; then
   echo ""
   "$AI_HOOKS_PYTHON" -c "
-import sqlite3
-conn = sqlite3.connect('$DB')
+import sqlite3, sys
+conn = sqlite3.connect(sys.argv[1])
 total = conn.execute('SELECT COUNT(*) FROM events').fetchone()[0]
 types = conn.execute('SELECT type, COUNT(*) FROM events GROUP BY type').fetchall()
 state_count = conn.execute('SELECT COUNT(*) FROM state').fetchone()[0]
@@ -90,7 +90,7 @@ print(f'  事件总数: {total}')
 for t, c in types: print(f'    {t}: {c}')
 print(f'  state keys: {state_count}')
 conn.close()
-" 2>/dev/null || true
+" "$DB" 2>/dev/null || true
 fi
 
 echo ""
