@@ -1,0 +1,216 @@
+#!/usr/bin/env python
+"""
+ai-backfill — 从 git log 补历史 event + 审计事件空洞
+
+用法:
+    ai-backfill                       # 补 git commit events（默认）
+    ai-backfill --audit               # 只报告"有变更但无事件"的时间段
+    ai-backfill --audit --fix         # 报告 + 补空洞标记事件
+
+过滤规则:
+    feat:/fix:/refactor:/test:/docs:   → 生成 event
+    format/lint/style/WIP/merge        → 跳过
+"""
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+
+# 自我定位：支持从 bin/ 或直接脚本执行
+_script_path = os.path.abspath(__file__)
+if os.path.basename(os.path.dirname(_script_path)) == "bin":
+    HOOKS_DIR = os.path.dirname(os.path.dirname(_script_path))
+else:
+    HOOKS_DIR = os.path.dirname(_script_path)
+sys.path.insert(0, HOOKS_DIR)
+from db import get_conn, record_event, get_recent_events
+from rebuild_state import rebuild as rebuild_state
+
+
+# ── 提交过滤 ──
+
+_SKIP_PATTERNS = re.compile(
+    r'^(Merge |merge |WIP|wip|format|lint|style|chore\(?release\)?)',
+    re.IGNORECASE,
+)
+
+
+def _should_include(commit_msg: str) -> bool:
+    """判断一个 commit 是否应生成 event。过滤噪音。"""
+    return not _SKIP_PATTERNS.match(commit_msg)
+
+
+# ── git log 读取 ──
+
+def _get_git_log(project_dir: str) -> list[dict]:
+    """返回 [{sha, date, message}, ...]，按时间正序"""
+    result = subprocess.run(
+        ["git", "log", "--reverse", "--format=%H|%ai|%s"],
+        capture_output=True, text=True, cwd=project_dir,
+    )
+    if result.returncode != 0:
+        return []
+    commits = []
+    for line in result.stdout.strip().split("\n"):
+        if not line:
+            continue
+        parts = line.split("|", 2)
+        if len(parts) == 3:
+            commits.append({"sha": parts[0], "date": parts[1], "message": parts[2]})
+    return commits
+
+
+# ── 已有 events (按 sha 去重) ──
+
+def _get_existing_shas(db_path: str) -> set[str]:
+    conn = get_conn(db_path)
+    rows = conn.execute(
+        "SELECT payload FROM events WHERE type='commit'"
+    ).fetchall()
+    conn.close()
+    shas = set()
+    for r in rows:
+        try:
+            p = json.loads(r["payload"])
+            if p.get("sha"):
+                shas.add(p["sha"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return shas
+
+
+# ── 默认模式：补 commit events ──
+
+def _backfill_commits(db_path: str):
+    project_dir = os.path.dirname(os.path.dirname(db_path))
+    commits = _get_git_log(project_dir)
+    if not commits:
+        print("No git history found")
+        return
+
+    existing = _get_existing_shas(db_path)
+    project_name = os.path.basename(project_dir)
+
+    count = 0
+    skipped = 0
+    for c in commits:
+        if c["sha"] in existing:
+            continue
+        if not _should_include(c["message"]):
+            skipped += 1
+            continue
+
+        record_event(
+            db_path, "commit",
+            {"sha": c["sha"], "message": c["message"], "date": c["date"],
+             "author": "backfill", "backfilled": True},
+            project_name,
+        )
+        count += 1
+
+    if count > 0:
+        rebuild_state(db_path)
+        print(f"Backfilled {count} commit events ({skipped} skipped, already filtered)")
+    else:
+        print(f"No new commits to backfill ({skipped} skipped)")
+
+
+# ── Audit 模式 ──
+
+def _get_event_timespan(db_path: str) -> tuple[str | None, str | None]:
+    """返回 (earliest_event_time, latest_event_time)"""
+    conn = get_conn(db_path)
+    row = conn.execute(
+        "SELECT MIN(created_at) as first, MAX(created_at) as last FROM events"
+    ).fetchone()
+    conn.close()
+    return (row["first"], row["last"]) if row and row["first"] else (None, None)
+
+
+def _audit_gaps(db_path: str, fix: bool = False):
+    """扫描 .ai/ 目录 mtime 与 events 时间对比，报告空洞"""
+    ai_dir = os.path.dirname(db_path)
+    if not os.path.isdir(ai_dir):
+        print("No .ai/ directory found")
+        return
+
+    first_event, last_event = _get_event_timespan(db_path)
+    now_ts = int(subprocess.run(
+        ["python", "-c", "import time; print(int(time.time()))"],
+        capture_output=True, text=True,
+    ).stdout.strip())
+
+    # 扫描文件
+    gaps = []
+    for fname in ("STATUS.md", "MEMORY.md", "DECISIONS.md"):
+        fpath = os.path.join(ai_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        mtime = int(os.path.getmtime(fpath))
+        # 文件修改时间对应的 ISO 字符串
+        mtime_iso = subprocess.run(
+            ["python", "-c",
+             f"from datetime import datetime,timezone; print(datetime.fromtimestamp({mtime}, tz=timezone.utc).isoformat())"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+
+        # 检查文件 mtime 附近是否有 event
+        nearby = False
+        if last_event:
+            conn = get_conn(db_path)
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM events WHERE created_at >= ?",
+                (mtime_iso[:19],),
+            ).fetchone()
+            if row and row["cnt"] > 0:
+                nearby = True
+            conn.close()
+
+        if not nearby:
+            gaps.append((fname, mtime_iso))
+
+    if not gaps:
+        print("Audit: no gaps detected")
+        return
+
+    print(f"Audit: {len(gaps)} gap(s) detected")
+    for fname, ts in gaps:
+        print(f"  {fname} modified at {ts[:19]} — no events recorded nearby")
+
+    if fix:
+        project_dir = os.path.dirname(ai_dir)
+        project_name = os.path.basename(project_dir)
+        for fname, ts in gaps:
+            record_event(
+                db_path, "ai_session",
+                {"summary": f"backfilled: {fname} 变更记录", "backfilled": True},
+                project_name,
+            )
+        print(f"Fixed: {len(gaps)} backfill event(s) created")
+
+
+# ── 入口 ──
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: ai-backfill <db_path> [--audit] [--fix]")
+        sys.exit(1)
+
+    db_path = sys.argv[1]
+    if not os.path.isfile(db_path):
+        print(f"Database not found: {db_path}")
+        sys.exit(1)
+
+    is_audit = "--audit" in sys.argv
+    do_fix = "--fix" in sys.argv
+
+    if is_audit:
+        _audit_gaps(db_path, fix=do_fix)
+    else:
+        _backfill_commits(db_path)
+
+
+if __name__ == "__main__":
+    main()
