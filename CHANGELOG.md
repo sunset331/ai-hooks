@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.2.0 (2026-07-02)
+
+- [feat] `ai-backfill` — retroactive event reconstruction from git log (with noise filtering)
+- [feat] `ai-backfill --audit` — detect time periods with file changes but no events
+- [feat] `ai-backfill --audit --fix` — create events for detected gaps
+- [feat] `ai-log` command — quick event recording from any project directory
+- [feat] `ai-new` command — one-command project creation (git init + ai-init)
+- [feat] `db.py events` — timeline display with `--today` and `--since DATE`
+- [feat] SessionStart prompt now includes "事件记录" usage guide
+- [fix] `doctor.sh` SQL injection in db path (sys.argv instead of inline)
+- [portable] All bin/ scripts self-locate; ai-new uses `$AI_NEW_DIR` env var
+- [test] 34 pytest + 24 shell tests, all passing
+
 ## v3.1.0 (2026-07-02)
 
 - [refactor] Extract pure `reduce(state, event) -> state` function — the single source of truth for state projection

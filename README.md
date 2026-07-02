@@ -26,13 +26,20 @@ SQLite Events ──→ Project State ──→ Claude Session (auto-injected on
 git clone https://github.com/sunset331/ai-hooks.git
 cd ai-hooks && bash install.sh
 
-# 2. One command to add to any project
+# 2. Quick start options:
+
+#   Option A: Create a new project (git + ai in one step)
+ai-new my-project
+cd ~/projects/my-project
+
+#   Option B: Add to an existing project
 ai-init ~/my-project
 
 # 3. Work normally. That's it.
 git commit -m "fix: login bug"      # → event + state auto-recorded
 git checkout feature-branch         # → state summary printed
-# next Claude Code session → context auto-injected
+ai-log "BPINNs DCU 验证完成"        # → record non-commit milestones
+# next Claude Code session → Smart Resume with context
 ```
 
 | Situation | Without ai-hooks | With ai-hooks |
@@ -72,10 +79,14 @@ Data flow:
 
 | Command | Description |
 |---------|-------------|
+| `ai-new <name>` | Create a new project with git + .ai in one command |
 | `ai-init <dir>` | Initialize `.ai/` system in a project (idempotent) |
 | `ai-doctor <dir>` | Diagnose `.ai/` health |
+| `ai-doctor --repair <dir>` | Diagnose + auto-rebuild state |
 | `ai-update <dir>` | Upgrade hooks path + DB schema |
 | `ai-uninstall <dir>` | Remove hook config (keeps `.ai/` data) |
+| `ai-log <summary>` | Record a milestone event (git fallback if empty) |
+| `ai-backfill <db>` | Backfill commit events from git log |
 
 ## Events
 
@@ -85,7 +96,7 @@ Every state change is an append-only event. No data loss, full audit trail.
 |------|---------|---------|
 | `commit` | post-commit hook | `{sha, message, date, author}` |
 | `checkout` | post-checkout hook | `{branch, from}` |
-| `ai_session` | Claude Code | `{action, model, summary}` |
+| `ai_session` | `ai-log` command | `{summary}` |
 | `scheduler_check` | Task Scheduler | `{status, dirty_count, warnings}` |
 
 ```bash
