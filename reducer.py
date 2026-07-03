@@ -69,6 +69,10 @@ def reduce(state: dict, event: dict) -> dict:
 
     elif event_type == "ai_session":
         next_state["last_ai_action"] = payload.get("summary")
+        next_state["status_health"] = {
+            "status_md_updated": created_at[:10],
+            "healthy": True,
+        }
 
     elif event_type == "scheduler_check":
         next_state["dirty_files"] = payload.get("dirty_count", 0)

@@ -2,6 +2,10 @@
 # session-start.sh — Claude Code 启动时注入 .ai/ 上下文
 # 被 .claude/settings.json 的 SessionStart hook 调用
 #
+# 功能:
+#   1. 自检 + 自修复 (self-check.sh)
+#   2. 注入项目状态到系统提示
+#
 # 输出: 纯文本，被 Claude Code 注入到系统提示
 
 . "$(dirname "$0")/hooks.conf"
@@ -9,7 +13,13 @@
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 DB="$PROJECT_DIR/.ai/project.db"
 
-if [ ! -f "$DB" ]; then
+# ── Step 0: 环境自检 + 自修复 ────────────────────────────
+SELF_CHECK="$AI_HOOKS_DIR/self-check.sh"
+if [ -f "$SELF_CHECK" ]; then
+    bash "$SELF_CHECK" "$PROJECT_DIR"
+fi
+
+# ── Step 1: 注入状态摘要 ──────────────────────────────────
     echo "=== .ai/ 系统: 项目数据库未初始化 ==="
     echo "运行: $AI_HOOKS_DIR/setup.sh \"$PROJECT_DIR\""
     exit 0

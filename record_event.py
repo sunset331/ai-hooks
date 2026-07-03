@@ -30,6 +30,23 @@ def main():
     result = record_event(db_path, event_type, payload, project)
     print(f"event_id={result['id']} created_at={result['created_at']}")
 
+    # 自动链: update_state + render_state
+    db_dir = os.path.dirname(db_path)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from update_state import apply_event
+        from render_state import render
+
+        apply_event(db_path, event_type, result["id"])
+
+        status_path = os.path.join(db_dir, "STATUS.md")
+        with open(status_path, "w", encoding="utf-8") as f:
+            f.write(render(db_path))
+            f.write("\n")
+        print(f"state updated, STATUS rendered to {status_path}")
+    except Exception as e:
+        print(f"state/render chain warning: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,5 @@
 #!/bin/bash
+# AI_HOOKS_VERSION=3.1.2
 # post-checkout hook — 记录 checkout 事件 + 输出 state 摘要 + 更新 STATUS.md
 
 . "$(dirname "$0")/hooks.conf"
