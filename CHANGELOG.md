@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.3.0 (2026-07-03)
+
+- [feat] `self-check.sh` — 幂等环境自检+自修复（project.db/schema/hooks/版本/路径/settings merge）
+- [feat] AI_HOOKS_VERSION 版本头 — hook 文件版本跟踪，旧版本自动升级
+- [feat] `self-check.sh` JSON 结构输出，机器可解析
+- [feat] `settings.json` merge 模式 — 保留用户自定义 hook，只补 SessionStart
+- [feat] ai-log 支持 `-p <project_dir>`，不依赖 cwd
+- [feat] `record_event` 自动链: record → update_state → render STATUS.md
+- [fix] state 不一致只告警不自动 rebuild（Level 2 safety）
+- [fix] SessionStart 不再自动 render STATUS（render 只跟事件链绑定）
+- [fix] doctor.sh 检查 Git hooks 版本 + AI_HOOKS_DIR 路径有效性
+
 ## v3.2.0 (2026-07-02)
 
 - [feat] `ai-backfill` — retroactive event reconstruction from git log (with noise filtering)
